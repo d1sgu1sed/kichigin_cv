@@ -17,12 +17,10 @@ def detect_obstacles_and_pterodactyls(image):
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         if 10 < w < 120 and 10 < h < 120:
-            if y < 50:
+            if y < 50:  # Птеродактиль
                 pterodactyls.append((x, y, w, h))
-                break
-            else:
+            else:  # Препятствие
                 obstacles.append((x, y, w, h))
-                break
 
     return obstacles, pterodactyls
 
@@ -30,42 +28,68 @@ def adjust_monitor_speed(speed):
     base_width = 80
     return {
         "top": 324,
-        "left": 750,
-        "width": base_width + int(speed * 0.16), 
+        "left": 749,
+        "width": base_width + int(speed * 0.08),
         "height": 120,
     }
+
 def handle_actions(obstacles, pterodactyls, fl):
+    # print(fl)
+    if fl:  # Отжать клавишу вниз, если нет угроз
+        pyautogui.keyUp("down")
+        fl = False
+        return fl
+
     if obstacles:
-        pyautogui.press("space") 
-    elif pterodactyls:
-        pyautogui.keyDown("down")
-        fl = True
-    else:
-        if fl:
-            pyautogui.keyDown("down")
-            fl = False
-        pyautogui.keyUp("down") 
+        obstacle = min(obstacles, key=lambda obs: obs[0])
+        if obstacle[0] < 150:  # Если препятствие близко
+            pyautogui.press("space")  # Прыжок
+            return fl
 
-speed = 0  
-fl = False
-with mss.mss() as sct:
-    monitor = adjust_monitor_speed(speed)
+    if pterodactyls:
+        pterodactyl = min(pterodactyls, key=lambda ptero: ptero[0])
+        if pterodactyl[0] < 35:  # Если птеродактиль близко
+            if not fl:
+                pyautogui.keyDown("down")  # Присесть
+                fl = True
+        return fl
+    return fl
+    
 
-    print("Запуск через 5 секунд...")
-    time.sleep(5)
+def main():
+    speed, timer = 0, 0
+    fl = False
+    with mss.mss() as sct:
+        monitor = adjust_monitor_speed(speed)
 
-    while True:
-        screenshot = np.array(sct.grab(monitor))
+        print("Запуск через 5 секунд...")
+        time.sleep(5)
 
-        processed_image = process_image(screenshot)
+        while True:
+            screenshot = np.array(sct.grab(monitor))
+            processed_image = process_image(screenshot)
 
-        obstacles, pterodactyls = detect_obstacles_and_pterodactyls(processed_image)
+            obstacles, pterodactyls = detect_obstacles_and_pterodactyls(processed_image)
 
-        handle_actions(obstacles, pterodactyls, fl)
+            fl = handle_actions(obstacles, pterodactyls, fl)
 
-        # Увеличение скорости каждые 7 циклов
-        if speed % 7 == 0:
-            monitor = adjust_monitor_speed(speed)
+            # Увеличение скорости каждые 5 циклов
+            if timer % 7 == 0:
+                speed += 1
+                monitor = adjust_monitor_speed(speed)
 
-        speed += 1
+            # Отладочная информация
+            debug_image = processed_image.copy()
+            for x, y, w, h in obstacles:
+                cv2.rectangle(debug_image, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            for x, y, w, h in pterodactyls:
+                cv2.rectangle(debug_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
+            cv2.imshow("Debug", debug_image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            timer += 1
+
+if __name__ == "__main__":
+    main()
