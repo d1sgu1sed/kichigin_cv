@@ -34,7 +34,7 @@ def _compute_elbow_angles(frame, kpts):
         l_el, r_el = kpts[7], kpts[8]
         l_wr, r_wr = kpts[9], kpts[10]
 
-        a_left  = _angle(l_sh, l_el, l_wr)
+        a_left = _angle(l_sh, l_el, l_wr)
         a_right = _angle(r_sh, r_el, r_wr)
 
         cv2.putText(
@@ -52,67 +52,64 @@ def _compute_elbow_angles(frame, kpts):
         return None, None
 
 
-def main() -> None:
-    model   = YOLO(MODEL_FILE)
-    cap     = cv2.VideoCapture(STREAM_URL)
-    writer  = cv2.VideoWriter(
-        str(OUTPUT_VIDEO),
-        cv2.VideoWriter_fourcc(*"MJPG"),
-        FPS_TARGET,
-        FRAME_SIZE
-    )
 
-    last_frame_time = time.time()
-    last_push_time  = time.time()
-    counter, arms_up = 0, True
+model = YOLO(MODEL_FILE)
+cap = cv2.VideoCapture(STREAM_URL)
+writer = cv2.VideoWriter(
+    str(OUTPUT_VIDEO),
+    cv2.VideoWriter_fourcc(*"MJPG"),
+    FPS_TARGET,
+    FRAME_SIZE
+)
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+last_frame_time = time.time()
+last_push_time = time.time()
+counter, arms_up = 0, True
 
-        now = time.time()
-        dt = max(now - last_frame_time, 1e-6)
-        last_frame_time = now
-        cv2.putText(frame, f"FPS: {1/dt:4.1f}",
-                    (10, 20), cv2.FONT_HERSHEY_PLAIN, 1.5, (25, 255, 25), 1)
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-        result = model(frame)[0]
-        if not result.keypoints:
-            cv2.imshow("Pose", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-            continue
+    now = time.time()
+    dt = max(now - last_frame_time, 1e-6)
+    last_frame_time = now
+    cv2.putText(frame, f"FPS: {1/dt:4.1f}",
+                (10, 20), cv2.FONT_HERSHEY_PLAIN, 1.5, (25, 255, 25), 1)
 
-        annotator = Annotator(frame)
-        annotator.kpts(result.keypoints.data[0], result.orig_shape, 5, True)
-        annotated = annotator.result()
-
-        angles = _compute_elbow_angles(annotated, result.keypoints.xy[0].tolist())
-        if all(a is not None for a in angles):
-            left, right = angles
-            if arms_up and left < ELBOW_THRESHOLD and right < ELBOW_THRESHOLD:
-                counter += 1
-                last_push_time = now
-                arms_up = False
-            elif left > ELBOW_THRESHOLD and right > ELBOW_THRESHOLD:
-                arms_up = True
-
-        if now - last_push_time > RESET_TIMEOUT:
-            counter = 0
-
-        cv2.putText(annotated, f"Count: {counter}",
-                    (20, 50), cv2.FONT_HERSHEY_PLAIN, 2, (25, 255, 25), 2)
-
-        cv2.imshow("Pose", annotated)
-        writer.write(cv2.resize(annotated, FRAME_SIZE))
-
+    result = model(frame)[0]
+    if not result.keypoints:
+        cv2.imshow("Pose", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
+        continue
 
-    writer.release()
-    cap.release()
-    cv2.destroyAllWindows()
+    annotator = Annotator(frame)
+    annotator.kpts(result.keypoints.data[0], result.orig_shape, 5, True)
+    annotated = annotator.result()
 
-if __name__ == "__main__":
-    main()
+    angles = _compute_elbow_angles(annotated, result.keypoints.xy[0].tolist())
+    if all(a is not None for a in angles):
+        left, right = angles
+        if arms_up and left < ELBOW_THRESHOLD and right < ELBOW_THRESHOLD:
+            counter += 1
+            last_push_time = now
+            arms_up = False
+        elif left > ELBOW_THRESHOLD and right > ELBOW_THRESHOLD:
+            arms_up = True
+
+    if now - last_push_time > RESET_TIMEOUT:
+        counter = 0
+
+    cv2.putText(annotated, f"Count: {counter}",
+                (20, 50), cv2.FONT_HERSHEY_PLAIN, 2, (25, 255, 25), 2)
+
+    cv2.imshow("Pose", annotated)
+    writer.write(cv2.resize(annotated, FRAME_SIZE))
+
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+writer.release()
+cap.release()
+cv2.destroyAllWindows()
